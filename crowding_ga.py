@@ -85,7 +85,7 @@ def d(b1,b2):
     # Simple bitstring distance
     counter = 0
     for i in range(len(b1)):
-        if b1[i] == b2[i]:
+        if b1[i] != b2[i]:
             counter +=1
     return counter
 
@@ -167,12 +167,14 @@ def pop_entropy(population):
             
 def run_genetic(population, generations, crowding=False):
     pop = generate_population(population, x.shape[1])
-    fitness_progression= []
+    best = []
+    averages = []
     entropies = []
     for i in range(generations):
         for ind in pop:
             ind.fitness=0
-        print('Generation: ', i)
+        if i%10 == 0:
+            print('Generation %d/%d' % (i, generations))
         if crowding:
             parents = selection(pop, parent_amount=population)
             children = mating(parents, crowding=True)
@@ -184,29 +186,31 @@ def run_genetic(population, generations, crowding=False):
             
         entropy = pop_entropy(pop)
         entropies.append(entropy)
-        fitness_progression.append(pop[0].fitness)
-    return fitness_progression, entropies
+        fitnesses = [ind.fitness for ind in pop]
+        best.append(np.max(fitnesses))
+        averages.append(np.average(fitnesses))
+    return best, averages, entropies
+
 
 print('Running crowding')
-fitness_crowding, entropy_crowding = run_genetic(100,200,crowding=True)
+crowding_best, crowding_avg, entropy_crowding = run_genetic(100,200,crowding=True)
 print('Running simple genetic algorithm')
-fitness_simple, entropy_simple = run_genetic(100,200,crowding=False)
+simple_best, simple_avg, entropy_simple = run_genetic(100,200,crowding=False)
 
-averaged_fitness_crowding = []
-fitness_crowding = [fitness_crowding[0],fitness_crowding[0]] + fitness_crowding + [fitness_crowding[-1],fitness_crowding[-1]]
-for i in range(2, len(fitness_crowding)-2):
-    averaged_fitness_crowding.append(np.sum(fitness_crowding[i-2:i+3])/5)
+plt.plot(crowding_best, label="Crowding")
+plt.plot(simple_best, label="Simple genetic algorithm")
+plt.legend(loc="best")
+plt.title("Best fitness")
+plt.show()
 
-averaged_fitness_simple = []
-fitness_simple = [fitness_simple[0],fitness_simple[0]] + fitness_simple + [fitness_simple[-1],fitness_simple[-1]]
-for i in range(2, len(fitness_simple)-2):
-    averaged_fitness_simple.append(np.sum(fitness_simple[i-2:i+3])/5)
-plt.plot(averaged_fitness_crowding, label='Crowding')
-plt.plot(averaged_fitness_simple, label='Simple Genetic Algorithm')
+plt.plot(crowding_avg, label="Crowding")
+plt.plot(simple_avg, label="Simple genetic algorithm")
 plt.legend(loc='best')
+plt.title("Average fitness")
 plt.show()
 
 plt.plot(entropy_crowding, label='Crowding')
 plt.plot(entropy_simple, label='Simple Genetic Algorithm')
 plt.legend(loc='best')
+plt.title("Entropy measure")
 plt.show()
