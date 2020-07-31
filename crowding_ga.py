@@ -8,34 +8,68 @@ linear_regression = LinReg()
 
 # Parameters
 # MC = Mutation chance, PHI= Generalized crowding parameter
-MC = 0.7
-PHI = 0.3
+MC = 0.0
+MR = 0.3
+PHI = 0.0
+CP = 0.7
+FITNESS = "SINE"
+BITSTRING_SIZE=20
 
 def read_data():
     rows = []
     ys = []
-    f = open('datad.txt')
+    f = open('new.data')
     for line in f:
-        tokens = line.split()
-        tokens = [float(token.replace(' ', '').replace('\n', '')) for token in tokens]
+        tokens = line.split(',')
+        tokens = [token.replace(' ', '').replace('\n', '') for token in tokens]
         rows.append(tokens[:-1])
-        ys.append(tokens[-1])
-    return np.asarray(rows), ys
+        ys.append(float(tokens[-1]))
+    rows = np.asarray(rows)
+    mask = (rows=='?')
+    idx = mask.any(axis=0)
+    rows = rows[:,~idx]
+    rows = rows.astype('float')
+    for i in range(len(idx)):
+        if idx[i]:
+            if i>3:
+                print(str(i+1) + ',', end='')
+            else:
+                print(str(i) + ',', end='')
+    f.close()
+    return rows, ys
+
+def save_data(x,y):
+    f = open('new.data', 'w')
+    for i in range(len(x)):
+        line = ''
+        for j in range(len(x[i])):
+            line+=str(x[i][j])+','
+        line+=str(y[i])
+        f.write(line + '\n')
+    f.close()
 
 x,y = read_data()
-
-
+print(1/linear_regression.get_fitness(x,y, random_state=42))
+#save_data(x,y)
+print(x.shape)
 class Chromosome():
     def __init__(self, bitstring):
         self.bitstring = bitstring
         self.fitness = 0
 
+def f(x):
+    x_t = x/(10*(2**10))
+    return math.sin(x_t)
+
 def get_fitness(individual):
     global x
     if individual.fitness!=0:
         return individual.fitness
-    selected_features = linear_regression.get_columns(x, individual.bitstring)
-    individual.fitness = 1/linear_regression.get_fitness(selected_features,y)
+    if FITNESS=="DATASET":
+        selected_features = linear_regression.get_columns(x, individual.bitstring)
+        individual.fitness = 1/linear_regression.get_fitness(selected_features,y, random_state=42)
+    elif FITNESS=="SINE":
+        individual.fitness = f(int(individual.bitstring,2))
     return individual.fitness
     
 def generate_population(pop_size, i_size):
@@ -51,7 +85,7 @@ def selection(pop, parent_amount):
     for i in pop:
         fitness_scores.append(get_fitness(i))
     # Calculate scaled scores
-    scores = np.asarray(fitness_scores) - min(fitness_scores)*0.99
+    scores = np.asarray(fitness_scores)
     scores/=(np.sum(scores)+1e-20)
     parent_list = []
     parent_score = list(zip(pop, scores))
@@ -85,8 +119,7 @@ def d(b1,b2):
     # Simple bitstring distance
     counter = 0
     for i in range(len(b1)):
-        if b1[i] == b2[i]:
-            counter +=1
+        counter+=(int(b1[i])-int(b2[i]))**2
     return counter
 
 def local_tourn(c1,c2,p1,p2):
@@ -106,8 +139,21 @@ def local_tourn(c1,c2,p1,p2):
     
 def crossover(p1,p2, crowding=False):
     crossover_point = random.randint(0, len(p1.bitstring))
-    c1_value = p1.bitstring[:crossover_point] + p2.bitstring[crossover_point:]
-    c2_value = p2.bitstring[:crossover_point] + p1.bitstring[crossover_point:]
+    c1_value = ''
+    for i in range(len(p1.bitstring)):
+        r = random.random()
+        if r>CP:
+            c1_value+=p1.bitstring[i]
+        else:
+            c1_value+=p2.bitstring[i]
+    c2_value = ''
+    for i in range(len(p2.bitstring)):
+        r = random.random()
+        if r<CP:
+            c2_value+=p1.bitstring[i]
+        else:
+            c2_value+=p2.bitstring[i]
+    
     c1_value = mutation(c1_value)
     c2_value = mutation(c2_value)
     c1 = Chromosome(c1_value)
@@ -116,18 +162,34 @@ def crossover(p1,p2, crowding=False):
         c1,c2 = local_tourn(c1,c2,p1,p2)
     return c1,c2
 
-def mutation(c):
+def old_mutation(c):
+    c = list(c)
     r = random.random()
-    if r<MC:
-        m_index = random.randint(0, len(c)-1)
-        c = list(c)
+    if r>MC:
+        return "".join(c)
+    for i in range(0,len(c)):
+        m_index = i
+        r = random.random()
+        if r<MR:
+
+            if c[m_index]=='1':
+                c[m_index] = '0'
+            else:
+                c[m_index] = '1'
+            r = random.random()
+    return "".join(c)
+
+def mutation(c):
+    m_index = random.randint(0, len(c)-1)
+    c = list(c)
+    r = random.random()
+    if r>MC:
+        return "".join(c)
         if c[m_index]=='1':
             c[m_index] = '0'
         else:
             c[m_index] = '1'
-        r = random.random()
     return "".join(c)
-
 def mating(parents, crowding=False):
     children = []
     random.shuffle(parents)
@@ -164,49 +226,94 @@ def get_entropy(bitstrings):
 def pop_entropy(population):
     bitstrings = [ind.bitstring for ind in population]
     return get_entropy(bitstrings)
-            
+
+def crowding_survival(children, parents):
+    new_pop = []
+    random.shuffle(children)
+    random.shuffle(parents)
+    for i in range(int(len(parents)/2)):
+        p1,p2 = local_tourn(children[2*i], children[2*i+1], parents[2*i], parents[2*i+1])
+        new_pop.append(p1)
+        new_pop.append(p2)
+    return new_pop
+
+def genetic_insert(population, insertions):
+    for i in insertions:
+        scores = []
+        for p in population:
+            scores.append(d(i.bitstring,p.bitstring))
+        closest = np.argmin(scores)
+        if population[closest].fitness < i.fitness:
+            population[closest] = i
+    return population
+
+def plot_sin(pop):
+    time = np.arange(0,128,0.1)
+    amp = np.sin(time)
+    x=[]
+    y=[]
+    for p in pop:
+        x.append(int(p.bitstring,2)/(10*(2**10)))
+        y.append(f(int(p.bitstring,2)))
+    plt.scatter(x,y, c='orange')
+    plt.plot(time, amp)
+    plt.title("Population plot")
+    plt.xlabel('x')
+    plt.ylabel('sin(x)')
+    plt.show()
+    
 def run_genetic(population, generations, crowding=False):
-    pop = generate_population(population, x.shape[1])
-    fitness_progression= []
+    genotype_size=0
+    if FITNESS=="SINE":
+        genotype_size = BITSTRING_SIZE
+    elif FITNESS=="DATASET":
+        genotype_size= x.shape[1]
+    pop = generate_population(population, genotype_size)
+    best = []
+    averages = []
     entropies = []
     for i in range(generations):
-        for ind in pop:
-            ind.fitness=0
-        print('Generation: ', i)
+        if i%10 == 0:
+            print('Generation %d/%d' % (i, generations))
         if crowding:
-            parents = selection(pop, parent_amount=population)
+            parents = pop
             children = mating(parents, crowding=True)
-            pop =survival(children, population)
+            elitism = survival(pop, 2)
+            pop = genetic_insert(children, elitism)
+            random.shuffle(pop)
         else:
-            parents = selection(pop, parent_amount=int(population/2))
+            parents = selection(pop, parent_amount=population)
             children = mating(parents)
             pop =survival(pop+children, population)
-            
+        if FITNESS=="SINE" and i%10==0:
+            plot_sin(pop)
         entropy = pop_entropy(pop)
         entropies.append(entropy)
-        fitness_progression.append(pop[0].fitness)
-    return fitness_progression, entropies
+        fitnesses = [ind.fitness for ind in pop]
+        best.append(np.max(fitnesses))
+        averages.append(np.average(fitnesses))
+    return best, averages, entropies
+
 
 print('Running crowding')
-fitness_crowding, entropy_crowding = run_genetic(100,200,crowding=True)
+crowding_best, crowding_avg, entropy_crowding = run_genetic(70,85,crowding=True)
 print('Running simple genetic algorithm')
-fitness_simple, entropy_simple = run_genetic(100,200,crowding=False)
+simple_best, simple_avg, entropy_simple = run_genetic(70,85,crowding=False)
 
-averaged_fitness_crowding = []
-fitness_crowding = [fitness_crowding[0],fitness_crowding[0]] + fitness_crowding + [fitness_crowding[-1],fitness_crowding[-1]]
-for i in range(2, len(fitness_crowding)-2):
-    averaged_fitness_crowding.append(np.sum(fitness_crowding[i-2:i+3])/5)
-
-averaged_fitness_simple = []
-fitness_simple = [fitness_simple[0],fitness_simple[0]] + fitness_simple + [fitness_simple[-1],fitness_simple[-1]]
-for i in range(2, len(fitness_simple)-2):
-    averaged_fitness_simple.append(np.sum(fitness_simple[i-2:i+3])/5)
-plt.plot(averaged_fitness_crowding, label='Crowding')
-plt.plot(averaged_fitness_simple, label='Simple Genetic Algorithm')
-plt.legend(loc='best')
+plt.plot(crowding_best, label="Deterministic Crowding")
+plt.plot(simple_best, label="Simple genetic algorithm")
+plt.legend(loc="best")
+plt.title("Best fitness")
 plt.show()
 
-plt.plot(entropy_crowding, label='Crowding')
+plt.plot(crowding_avg, label="Deterministic Crowding")
+plt.plot(simple_avg, label="Simple genetic algorithm")
+plt.legend(loc='best')
+plt.title("Average fitness")
+plt.show()
+
+plt.plot(entropy_crowding, label='Deterministic Crowding')
 plt.plot(entropy_simple, label='Simple Genetic Algorithm')
 plt.legend(loc='best')
+plt.title("Entropy measure")
 plt.show()
