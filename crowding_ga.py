@@ -12,7 +12,8 @@ MC = 0.0
 MR = 0.3
 PHI = 0.0
 CP = 0.7
-FITNESS = "DATASET"
+FITNESS = "SINE"
+BITSTRING_SIZE=20
 
 def read_data():
     rows = []
@@ -262,7 +263,12 @@ def plot_sin(pop):
     plt.show()
     
 def run_genetic(population, generations, crowding=False):
-    pop = generate_population(population, x.shape[1])
+    genotype_size=0
+    if FITNESS=="SINE":
+        genotype_size = BITSTRING_SIZE
+    elif FITNESS=="DATASET":
+        genotype_size= x.shape[1]
+    pop = generate_population(population, genotype_size)
     best = []
     averages = []
     entropies = []
@@ -294,19 +300,19 @@ crowding_best, crowding_avg, entropy_crowding = run_genetic(70,85,crowding=True)
 print('Running simple genetic algorithm')
 simple_best, simple_avg, entropy_simple = run_genetic(70,85,crowding=False)
 
-plt.plot(crowding_best, label="Crowding")
+plt.plot(crowding_best, label="Deterministic Crowding")
 plt.plot(simple_best, label="Simple genetic algorithm")
 plt.legend(loc="best")
 plt.title("Best fitness")
 plt.show()
 
-plt.plot(crowding_avg, label="Crowding")
+plt.plot(crowding_avg, label="Deterministic Crowding")
 plt.plot(simple_avg, label="Simple genetic algorithm")
 plt.legend(loc='best')
 plt.title("Average fitness")
 plt.show()
 
-plt.plot(entropy_crowding, label='Crowding')
+plt.plot(entropy_crowding, label='Deterministic Crowding')
 plt.plot(entropy_simple, label='Simple Genetic Algorithm')
 plt.legend(loc='best')
 plt.title("Entropy measure")
